@@ -241,7 +241,7 @@ class CriticAgent:
                     },
                 ],
                 "temperature": 0.2,
-                "max_tokens": 2048,
+                "max_tokens": 4096,
             }
             if settings.critic_thinking_enabled:
                 kwargs["extra_body"] = {"chat_template_kwargs": {"thinking": True}}
