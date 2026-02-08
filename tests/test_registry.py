@@ -23,9 +23,11 @@ def test_list_models_available_only(mock_settings) -> None:
     reg = ModelRegistry()
     all_models = reg.list_models()
     assert all_models
-    all_models[0].is_available = False
+    initially_available = reg.list_models(available_only=True)
+    first_available = next(m for m in all_models if m.is_available)
+    first_available.is_available = False
     available = reg.list_models(available_only=True)
-    assert len(available) == len(all_models) - 1
+    assert len(available) == len(initially_available) - 1
 
 
 def test_get_model_found(mock_settings) -> None:
@@ -65,7 +67,8 @@ def test_select_best_model_technical(mock_settings) -> None:
     reg = ModelRegistry()
     result = reg.select_best_model(IntentCategory.TECHNICAL)
     assert result is not None
-    assert result.capabilities.text_rendering >= 7
+    available_text_scores = [m.capabilities.text_rendering for m in reg.list_models(available_only=True)]
+    assert result.capabilities.text_rendering >= max(available_text_scores) - 1
 
 
 def test_select_best_model_no_available(mock_settings) -> None:

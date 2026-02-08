@@ -56,7 +56,9 @@ def registry() -> ModelRegistry:
 
 @pytest.fixture
 def orchestrator(registry: ModelRegistry) -> PipelineOrchestrator:
-    planner = PlannerAgent(available_models=registry.list_models(), style_presets=registry.list_style_presets())
+    planner = PlannerAgent(
+        available_models=registry.list_models(available_only=True), style_presets=registry.list_style_presets()
+    )
     executor = ExecutorAgent(registry=registry)
     critic = CriticAgent()
     return PipelineOrchestrator(planner=planner, executor=executor, critic=critic, registry=registry)

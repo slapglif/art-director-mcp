@@ -39,6 +39,7 @@ DEFAULT_CATALOG: list[ModelEntry] = [
         fallback_model_id="black-forest-labs/FLUX.1-schnell",
         cost_per_image_usd=0.03,
         tags=["flux", "high-quality", "text-rendering"],
+        is_available=False,
     ),
     ModelEntry(
         model_id="black-forest-labs/FLUX.1-schnell",
@@ -98,6 +99,7 @@ DEFAULT_CATALOG: list[ModelEntry] = [
         fallback_model_id="stabilityai/stable-diffusion-xl-base-1.0",
         cost_per_image_usd=0.04,
         tags=["sd3", "high-quality"],
+        is_available=False,
     ),
     ModelEntry(
         model_id="stabilityai/stable-diffusion-3.5-large-turbo",
@@ -118,6 +120,7 @@ DEFAULT_CATALOG: list[ModelEntry] = [
         fallback_model_id="stabilityai/stable-diffusion-xl-base-1.0",
         cost_per_image_usd=0.02,
         tags=["sd3", "fast", "turbo"],
+        is_available=False,
     ),
     ModelEntry(
         model_id="Kwai-Kolors/Kolors",
@@ -172,7 +175,7 @@ DEFAULT_STYLE_PRESETS: list[StylePreset] = [
         name="cinematic",
         prompt_suffix=", cinematic lighting, dramatic shadows, film grain, anamorphic lens, color grading",
         negative_prompt="flat lighting, overexposed, amateur, snapchat filter",
-        preferred_model_id="black-forest-labs/FLUX.1-dev",
+        preferred_model_id="black-forest-labs/FLUX.1-schnell",
         guidance_scale_override=7.0,
     ),
     StylePreset(
@@ -186,7 +189,7 @@ DEFAULT_STYLE_PRESETS: list[StylePreset] = [
         name="technical-diagram",
         prompt_suffix=", technical illustration, clean lines, labeled components, white background, vector style, exploded view",
         negative_prompt="photorealistic, blurry, cinematic, 3d render, shadows, artistic",
-        preferred_model_id="black-forest-labs/FLUX.1-dev",
+        preferred_model_id="black-forest-labs/FLUX.1-schnell",
         guidance_scale_override=8.0,
         num_steps_override=50,
     ),
@@ -212,7 +215,7 @@ DEFAULT_STYLE_PRESETS: list[StylePreset] = [
         name="logo-design",
         prompt_suffix=", logo design, minimalist, scalable, clean vector, professional branding, white background",
         negative_prompt="photorealistic, complex scene, blurry, 3d, shadows",
-        preferred_model_id="black-forest-labs/FLUX.1-dev",
+        preferred_model_id="black-forest-labs/FLUX.1-schnell",
         guidance_scale_override=8.5,
         num_steps_override=50,
     ),
@@ -220,7 +223,7 @@ DEFAULT_STYLE_PRESETS: list[StylePreset] = [
         name="concept-art",
         prompt_suffix=", concept art, digital painting, matte painting, detailed environment, epic composition",
         negative_prompt="photorealistic, low quality, amateur, simple, flat",
-        preferred_model_id="black-forest-labs/FLUX.1-dev",
+        preferred_model_id="black-forest-labs/FLUX.1-schnell",
     ),
     StylePreset(
         name="minimalist",
@@ -232,7 +235,7 @@ DEFAULT_STYLE_PRESETS: list[StylePreset] = [
         name="3d-render",
         prompt_suffix=", 3d render, octane render, volumetric lighting, subsurface scattering, ray tracing",
         negative_prompt="flat, 2d, drawing, sketch, painting, low poly",
-        preferred_model_id="stabilityai/stable-diffusion-3.5-large",
+        preferred_model_id="stabilityai/stable-diffusion-xl-base-1.0",
         guidance_scale_override=7.0,
     ),
     StylePreset(

@@ -47,7 +47,7 @@ async def _get_orchestrator() -> PipelineOrchestrator:
     registry = ModelRegistry()
     _registry = registry
     planner = PlannerAgent(
-        available_models=registry.list_models(),
+        available_models=registry.list_models(available_only=True),
         style_presets=registry.list_style_presets(),
     )
     executor = ExecutorAgent(registry=registry)

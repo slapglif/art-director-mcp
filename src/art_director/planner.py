@@ -71,6 +71,8 @@ optimize the prompt for that model, and configure the generation parameters.
 
 {models_summary}
 
+IMPORTANT: Only select from the models listed above. These are the currently available models. Do not select models not in this list.
+
 ## Available Style Presets
 {preset_names}
 
@@ -144,7 +146,7 @@ You MUST respond with ONLY a JSON object (no markdown, no explanation) with thes
                     {"role": "user", "content": user_content},
                 ],
                 "temperature": 0.3,
-                "max_tokens": 2048,
+                "max_tokens": 4096,
             }
             if settings.planner_thinking_enabled:
                 kwargs["extra_body"] = {"chat_template_kwargs": {"thinking": True}}

@@ -262,51 +262,60 @@ class CriticAgent:
             if parsed is None and reasoning:
                 import re
 
-                score_patterns = [
-                    r"(?:\*{0,2})(?:overall\s+)?(?:score|rating|quality)(?:\*{0,2})\s*[:\-]?\s*(\d+(?:\.\d+)?)\s*/?\s*(?:10)?",
-                    r"(\d+(?:\.\d+)?)\s*(?:out\s+of|/)\s*10",
-                    r"(?:rate|give|assign)\s+(?:this|it|the\s+image)?\s*(?:a\s+)?(?:score\s+of\s+)?(\d+(?:\.\d+)?)",
-                    r"(?:score|rating)\s+(?:of|is|=)\s+(\d+(?:\.\d+)?)",
-                ]
-                score_val = 5.0
-                for pattern in score_patterns:
-                    score_match = re.search(pattern, reasoning, re.IGNORECASE)
-                    if score_match:
-                        val = float(score_match.group(1))
-                        if 0 <= val <= 10:
-                            score_val = val
-                            break
+                # Try to extract JSON block embedded in reasoning (Kimi often embeds JSON in prose)
+                json_in_reasoning = re.search(r'\{[^{}]*"(?:score|verdict)"[^{}]*\}', reasoning, re.DOTALL)
+                if json_in_reasoning:
+                    parsed = repair_json(json_in_reasoning.group(0))
 
-                fail_indicators = [
-                    "poor",
-                    "bad",
-                    "incorrect",
-                    "wrong",
-                    "missing",
-                    "fail",
-                    "inaccurate",
-                    "gibberish",
-                    "hallucin",
-                ]
-                pass_indicators = ["excellent", "good", "accurate", "correct", "matches", "pass", "well"]
-                reasoning_lower = reasoning.lower()
-                has_fail = any(w in reasoning_lower for w in fail_indicators)
-                has_pass = any(w in reasoning_lower for w in pass_indicators)
+                if parsed is None:
+                    score_patterns = [
+                        r"(?:\*{0,2})(?:overall\s+)?(?:score|rating|quality)(?:\*{0,2})\s*[:\-]?\s*(\d+(?:\.\d+)?)\s*/?\s*(?:10)?",
+                        r"(\d+(?:\.\d+)?)\s*(?:out\s+of|/)\s*10",
+                        r"(?:rate|give|assign)\s+(?:this|it|the\s+image)?\s*(?:a\s+)?(?:score\s+of\s+)?(\d+(?:\.\d+)?)",
+                        r"(?:score|rating)\s+(?:of|is|=)\s+(\d+(?:\.\d+)?)",
+                        r"(\d+(?:\.\d+)?)\s*/\s*10",
+                        r"(?:i(?:'d|\s+would)?)\s+(?:rate|give|assign)\s+.*?(\d+(?:\.\d+)?)",
+                        r"(?:overall|final|total)\s*:?\s*(\d+(?:\.\d+)?)",
+                    ]
+                    score_val = 5.0
+                    for pattern in score_patterns:
+                        score_match = re.search(pattern, reasoning, re.IGNORECASE)
+                        if score_match:
+                            val = float(score_match.group(1))
+                            if 0 <= val <= 10:
+                                score_val = val
+                                break
 
-                if score_val >= 7.0 or (has_pass and not has_fail):
-                    verdict_from_prose = AuditVerdict.PASS
-                elif score_val <= 4.0 or (has_fail and not has_pass):
-                    verdict_from_prose = AuditVerdict.FAIL
-                else:
-                    verdict_from_prose = AuditVerdict.INCONCLUSIVE
+                    fail_indicators = [
+                        "poor",
+                        "bad",
+                        "incorrect",
+                        "wrong",
+                        "missing",
+                        "fail",
+                        "inaccurate",
+                        "gibberish",
+                        "hallucin",
+                    ]
+                    pass_indicators = ["excellent", "good", "accurate", "correct", "matches", "pass", "well"]
+                    reasoning_lower = reasoning.lower()
+                    has_fail = any(w in reasoning_lower for w in fail_indicators)
+                    has_pass = any(w in reasoning_lower for w in pass_indicators)
 
-                return AuditResult(
-                    verdict=verdict_from_prose,
-                    score=score_val,
-                    vlm_score=score_val,
-                    raw_vlm_response=reasoning[:500],
-                    feedback=reasoning[:300],
-                )
+                    if score_val >= 7.0 or (has_pass and not has_fail):
+                        verdict_from_prose = AuditVerdict.PASS
+                    elif score_val <= 4.0 or (has_fail and not has_pass):
+                        verdict_from_prose = AuditVerdict.FAIL
+                    else:
+                        verdict_from_prose = AuditVerdict.INCONCLUSIVE
+
+                    return AuditResult(
+                        verdict=verdict_from_prose,
+                        score=score_val,
+                        vlm_score=score_val,
+                        raw_vlm_response=reasoning[:500],
+                        feedback=reasoning[:300],
+                    )
             if parsed is None:
                 return AuditResult(
                     verdict=AuditVerdict.INCONCLUSIVE,
