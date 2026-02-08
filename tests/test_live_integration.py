@@ -86,7 +86,7 @@ async def test_live_draft_plan(orchestrator: PipelineOrchestrator) -> None:
     print("draft_plan reasoning_trace_preview:", plan.reasoning_trace[:200])
 
 
-@pytest.mark.timeout(360)
+@pytest.mark.timeout(600)
 @pytest.mark.asyncio
 async def test_live_architecture_diagram(orchestrator: PipelineOrchestrator) -> None:
     budget = BudgetConfig(max_retries=2, max_wall_clock_seconds=300, max_cost_usd=0.50)
@@ -123,9 +123,10 @@ async def test_live_architecture_diagram(orchestrator: PipelineOrchestrator) -> 
         print("final_plan optimized_prompt_preview:", (result.final_plan.prompt_optimized or "")[:200])
 
 
+@pytest.mark.timeout(300)
 @pytest.mark.asyncio
 async def test_live_quick_generation(orchestrator: PipelineOrchestrator) -> None:
-    budget = BudgetConfig(max_retries=1, max_wall_clock_seconds=120, max_cost_usd=0.20)
+    budget = BudgetConfig(max_retries=1, max_wall_clock_seconds=300, max_cost_usd=0.20)
     result = await orchestrator.generate(
         prompt="A simple flowchart showing: Input → Process → Output, clean lines, minimal design",
         style_preset="technical-diagram",

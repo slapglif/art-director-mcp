@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import base64
 import io
 from typing import Any
@@ -247,7 +248,10 @@ class CriticAgent:
             if settings.critic_thinking_enabled:
                 kwargs["extra_body"] = {"chat_template_kwargs": {"thinking": True}}
 
-            response = await self._vlm_client.chat.completions.create(**kwargs)
+            response = await asyncio.wait_for(
+                self._vlm_client.chat.completions.create(**kwargs),
+                timeout=90,
+            )
 
             # Read both content and reasoning_content (Kimi k2.5 may put response in reasoning_content)
             msg = response.choices[0].message
@@ -346,6 +350,12 @@ class CriticAgent:
                 raw_vlm_response=raw_text,
             )
 
+        except asyncio.TimeoutError:
+            logger.error("vlm_audit_timeout", timeout=90)
+            return AuditResult(
+                verdict=AuditVerdict.INCONCLUSIVE,
+                feedback="VLM audit timed out after 90s.",
+            )
         except Exception:
             logger.error("vlm_audit_failed", exc_info=True)
             return AuditResult(
