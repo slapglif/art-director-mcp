@@ -22,7 +22,7 @@ def test_default_values(monkeypatch, tmp_path) -> None:
     assert s.critic_base_url == "https://integrate.api.nvidia.com/v1"
     assert s.max_retries == 3
     assert s.default_width == 1024
-    assert s.clip_enabled is True
+    assert s.clip_enabled is False
     assert s.transport == "streamable-http"
     assert s.port == 8000
 

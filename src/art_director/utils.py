@@ -4,11 +4,17 @@ import base64
 import io
 import json
 import re
+import sys
 import time
 from pathlib import Path
 from typing import Any
 
 import structlog
+
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+if hasattr(sys.stderr, "reconfigure"):
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
 logger = structlog.get_logger()
 
@@ -56,35 +62,147 @@ def pil_to_bytes(img: Any, fmt: str = "PNG") -> bytes:
 
 _JSON_BLOCK_RE = re.compile(r"```(?:json)?\s*\n?(.*?)\n?```", re.DOTALL)
 _BRACE_RE = re.compile(r"\{.*\}", re.DOTALL)
+_THINK_RE = re.compile(r"<think>.*?</think>", re.DOTALL)
+
+
+def _extract_json_object_candidates(raw: str) -> list[str]:
+    candidates: list[str] = []
+    in_string = False
+    escape = False
+    depth = 0
+    start: int | None = None
+
+    for i, ch in enumerate(raw):
+        if escape:
+            escape = False
+            continue
+
+        if ch == "\\":
+            if in_string:
+                escape = True
+            continue
+
+        if ch == '"':
+            in_string = not in_string
+            continue
+
+        if in_string:
+            continue
+
+        if ch == "{":
+            if depth == 0:
+                start = i
+            depth += 1
+        elif ch == "}":
+            if depth > 0:
+                depth -= 1
+                if depth == 0 and start is not None:
+                    candidates.append(raw[start : i + 1])
+                    start = None
+
+    return candidates
 
 
 def repair_json(raw: str) -> dict[str, Any] | None:
-    raw = raw.strip()
+    raw = _THINK_RE.sub("", raw).strip()
+
+    # Normalize unicode variants that Kimi k2.5 sometimes outputs
+    raw = raw.replace("\u2018", "'").replace("\u2019", "'")
+    raw = raw.replace("\u201c", '"').replace("\u201d", '"')
+    raw = raw.replace("\uff40", "`").replace("\u02cb", "`")
+    # Remove BOM and zero-width chars
+    raw = raw.replace("\ufeff", "").replace("\u200b", "").replace("\u200c", "").replace("\u200d", "")
 
     try:
         return json.loads(raw)
     except json.JSONDecodeError:
         pass
 
-    md_match = _JSON_BLOCK_RE.search(raw)
-    if md_match:
+    last_brace = raw.rfind("}")
+    if last_brace > 0:
+        trimmed = raw[: last_brace + 1]
         try:
-            return json.loads(md_match.group(1).strip())
+            return json.loads(trimmed)
         except json.JSONDecodeError:
             pass
+
+    md_match = _JSON_BLOCK_RE.search(raw)
+    if md_match:
+        content = md_match.group(1).strip()
+        try:
+            return json.loads(content)
+        except json.JSONDecodeError:
+            last_brace = content.rfind("}")
+            if last_brace > 0:
+                try:
+                    return json.loads(content[: last_brace + 1])
+                except json.JSONDecodeError:
+                    pass
+            salvaged = content.rstrip()
+            if salvaged and not salvaged.endswith("}"):
+                quote_count = salvaged.count('"') - salvaged.count('\\"')
+                if quote_count % 2 != 0:
+                    salvaged += '"'
+                salvaged = salvaged.rstrip().rstrip(",")
+                salvaged += "}"
+                try:
+                    return json.loads(salvaged)
+                except json.JSONDecodeError:
+                    pass
 
     brace_match = _BRACE_RE.search(raw)
     if brace_match:
         candidate = brace_match.group(0)
-        candidate = candidate.replace("'", '"')
-        candidate = re.sub(r",\s*}", "}", candidate)
-        candidate = re.sub(r",\s*]", "]", candidate)
         try:
             return json.loads(candidate)
         except json.JSONDecodeError:
+            fixed = re.sub(r",\s*}", "}", candidate)
+            fixed = re.sub(r",\s*]", "]", fixed)
+            try:
+                return json.loads(fixed)
+            except json.JSONDecodeError:
+                fixed2 = fixed.replace("'", '"')
+                try:
+                    return json.loads(fixed2)
+                except json.JSONDecodeError:
+                    pass
+
+    candidates = _extract_json_object_candidates(raw)
+
+    # Kimi often puts the final answer JSON at the end of reasoning_content.
+    for candidate in reversed(candidates):
+        try:
+            result = json.loads(candidate)
+            if isinstance(result, dict):
+                return result
+        except json.JSONDecodeError:
+            continue
+
+    # If no candidate parses cleanly, try most-likely large blocks (best-effort).
+    for candidate in sorted(candidates, key=len, reverse=True):
+        fixed = re.sub(r",\s*}", "}", candidate)
+        fixed = re.sub(r",\s*]", "]", fixed)
+        try:
+            result = json.loads(fixed)
+            if isinstance(result, dict):
+                return result
+        except json.JSONDecodeError:
+            pass
+        try:
+            import json_repair
+
+            result = json_repair.loads(candidate)
+            if isinstance(result, dict):
+                return result
+        except Exception:
             pass
 
-    logger.warning("json_repair_failed", raw_length=len(raw), first_100=raw[:100])
+    logger.warning(
+        "json_repair_failed",
+        raw_length=len(raw),
+        first_100=raw[:100],
+        first_100_repr=repr(raw[:100]),
+    )
     return None
 
 
@@ -148,6 +266,11 @@ async def retry_async(
 
 
 def configure_logging(level: str = "INFO") -> None:
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    if hasattr(sys.stderr, "reconfigure"):
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+
     structlog.configure(
         processors=[
             structlog.contextvars.merge_contextvars,

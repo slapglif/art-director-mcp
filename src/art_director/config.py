@@ -14,17 +14,19 @@ class Settings(BaseSettings):
     planner_api_key: str = ""
     planner_base_url: str = "https://integrate.api.nvidia.com/v1"
     planner_model: str = "moonshotai/kimi-k2.5"
+    planner_thinking_enabled: bool = False
 
     hf_api_token: str = ""
 
     critic_api_key: str = ""
     critic_base_url: str = "https://integrate.api.nvidia.com/v1"
     critic_model: str = "moonshotai/kimi-k2.5"
+    critic_thinking_enabled: bool = False
 
     nim_api_key: str = ""
     nim_base_url: str = "https://integrate.api.nvidia.com/v1"
 
-    clip_enabled: bool = True
+    clip_enabled: bool = False
     clip_model: str = "openai/clip-vit-large-patch14"
     clip_threshold_pass: float = 0.82
     clip_threshold_fail: float = 0.55

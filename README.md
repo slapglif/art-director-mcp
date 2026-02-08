@@ -54,6 +54,59 @@ User Prompt
 - **A/B Model Comparison**: Generate same prompt with multiple models, compare scores, get recommendations
 - **Batch Generation**: Parallel image generation with configurable count and budget
 - **Async Job Management**: Non-blocking generation with progress tracking, cancellation support, job history
+- **Extended Thinking**: Planner and Critic agents use extended thinking for deeper reasoning on model selection and quality assessment (requires supported LLM)
+
+## Extended Thinking
+
+Art Director enables **extended thinking** for the planner and critic LLM agents, allowing them to reason more deeply before making decisions.
+
+### How It Works
+
+- **Planner Agent**: When creating or refining a generation plan, the LLM uses extended thinking to:
+  - Analyze the user's intent and constraints
+  - Compare available models against capability requirements
+  - Reason through the best prompt optimizations
+  - Decide on parameter configurations
+
+- **Critic Agent**: When auditing generated images, the LLM uses extended thinking to:
+  - Carefully analyze image content against the prompt
+  - Reason through quality issues and their severity
+  - Provide actionable feedback for refinement
+
+### Configuration
+
+Extended thinking is **disabled by default** in both agents. To enable it, set the environment variable to `true`:
+
+```python
+response = await client.chat.completions.create(
+    model=settings.planner_model,
+    messages=[...],
+    temperature=0.3,
+    max_tokens=1024,
+    extra_body={"chat_template_kwargs": {"thinking": False}},  # Extended thinking disabled by default
+)
+```
+
+To enable extended thinking, set `ART_DIRECTOR_PLANNER_THINKING_ENABLED=true` or `ART_DIRECTOR_CRITIC_THINKING_ENABLED=true` in your `.env` file.
+
+### Supported Models
+
+Extended thinking works best with models that support the `thinking` parameter:
+- **NVIDIA NIM**: Kimi k2.5 and other reasoning-capable models
+- **OpenAI**: o1, o3 (with appropriate API versions)
+- **Other OpenAI-compatible endpoints**: Check your provider's documentation
+
+### Performance Impact
+
+Extended thinking increases latency:
+- Planner planning: 2-5s → 5-15s (deeper reasoning)
+- Critic auditing: 2-8s → 5-20s (more thorough analysis)
+
+The wall-clock budget (`ART_DIRECTOR_MAX_WALL_CLOCK_SECONDS`, default 300s) accounts for this overhead.
+
+### Disabling Extended Thinking
+
+If your LLM doesn't support extended thinking or you want faster responses, edit `src/art_director/planner.py` and `src/art_director/critic.py` to remove the `extra_body` parameter from `chat.completions.create()` calls.
 
 ## Quick Start
 
@@ -89,12 +142,14 @@ python -m art_director
 | `ART_DIRECTOR_PLANNER_API_KEY` | (required) | API key for planner LLM (OpenAI-compatible) |
 | `ART_DIRECTOR_PLANNER_BASE_URL` | `https://integrate.api.nvidia.com/v1` | Planner endpoint (NVIDIA NIM default, OpenAI-compatible) |
 | `ART_DIRECTOR_PLANNER_MODEL` | `moonshotai/kimi-k2.5` | Planner model (Kimi k2.5 on NVIDIA NIM) |
+| `ART_DIRECTOR_PLANNER_THINKING_ENABLED` | `false` | Enable extended thinking for planner (requires supported model) |
 | `ART_DIRECTOR_HF_API_TOKEN` | (required) | Hugging Face API token |
 | `ART_DIRECTOR_CRITIC_API_KEY` | (required) | API key for critic VLM (NVIDIA NIM for Kimi k2.5) |
 | `ART_DIRECTOR_CRITIC_BASE_URL` | `https://integrate.api.nvidia.com/v1` | Critic endpoint (NVIDIA NIM) |
 | `ART_DIRECTOR_CRITIC_MODEL` | `moonshotai/kimi-k2.5` | Critic model (Kimi k2.5 on NVIDIA NIM) |
+| `ART_DIRECTOR_CRITIC_THINKING_ENABLED` | `false` | Enable extended thinking for critic (requires supported model) |
 | `ART_DIRECTOR_NIM_API_KEY` | (optional) | Shared NVIDIA NIM API key (fallback for planner + critic if their keys are unset) |
-| `ART_DIRECTOR_CLIP_ENABLED` | `true` | Enable CLIP fast-path scoring |
+| `ART_DIRECTOR_CLIP_ENABLED` | `false` | Enable CLIP fast-path scoring |
 | `ART_DIRECTOR_CLIP_THRESHOLD_PASS` | `0.82` | CLIP score for auto-pass |
 | `ART_DIRECTOR_CLIP_THRESHOLD_FAIL` | `0.55` | CLIP score for auto-fail |
 | `ART_DIRECTOR_MAX_RETRIES` | `3` | Maximum generation attempts |

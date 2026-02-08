@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from art_director.config import settings
 from art_director.planner import PlannerAgent
 from art_director.schemas import (
     AuditResult,
@@ -269,7 +270,10 @@ async def test_create_plan_passes_reasoning_extra_body(planner: PlannerAgent) ->
     await planner.create_plan("cat")
 
     call = planner._client.chat.completions.create.await_args
-    assert call.kwargs["extra_body"] == {"chat_template_kwargs": {"thinking": True}}
+    if settings.planner_thinking_enabled:
+        assert call.kwargs["extra_body"] == {"chat_template_kwargs": {"thinking": True}}
+    else:
+        assert "extra_body" not in call.kwargs
 
 
 async def test_refine_plan_passes_reasoning_extra_body(planner: PlannerAgent, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -299,7 +303,10 @@ async def test_refine_plan_passes_reasoning_extra_body(planner: PlannerAgent, mo
     await planner.refine_plan(previous, audit)
 
     call = planner._client.chat.completions.create.await_args
-    assert call.kwargs["extra_body"] == {"chat_template_kwargs": {"thinking": True}}
+    if settings.planner_thinking_enabled:
+        assert call.kwargs["extra_body"] == {"chat_template_kwargs": {"thinking": True}}
+    else:
+        assert "extra_body" not in call.kwargs
 
 
 async def test_create_plan_multimodal_with_reference_image(planner: PlannerAgent) -> None:
@@ -352,3 +359,86 @@ async def test_create_plan_text_only_without_reference(planner: PlannerAgent) ->
 
 def test_system_prompt_mentions_kimi(planner: PlannerAgent) -> None:
     assert "Kimi k2.5" in planner._system_prompt
+
+
+async def test_create_plan_without_thinking_when_disabled(
+    planner: PlannerAgent, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Test that thinking mode is NOT included when disabled via config."""
+    monkeypatch.setattr("art_director.planner.random.randint", lambda _a, _b: 12345)
+    from art_director.config import settings
+
+    monkeypatch.setattr(settings, "planner_thinking_enabled", False)
+
+    payload = {
+        "reasoning_trace": "ok",
+        "intent_category": "photorealistic",
+        "selected_model_id": "test/quality",
+        "pipeline_type": "text-to-image",
+        "prompt_optimized": "enhanced cat",
+        "negative_prompt": "",
+        "style_preset": None,
+        "parameters": {"guidance_scale": 7.0, "num_inference_steps": 50},
+        "estimated_cost_usd": 0.05,
+    }
+    planner._client.chat.completions.create.return_value = _mock_llm_response(json.dumps(payload))
+
+    await planner.create_plan("cat")
+
+    call = planner._client.chat.completions.create.await_args
+    # When thinking is disabled, extra_body should NOT be in kwargs
+    assert "extra_body" not in call.kwargs
+
+
+async def test_refine_plan_without_thinking_when_disabled(
+    planner: PlannerAgent, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Test that thinking mode is NOT included when disabled via config."""
+    monkeypatch.setattr("art_director.planner.random.randint", lambda _a, _b: 12345)
+    from art_director.config import settings
+
+    monkeypatch.setattr(settings, "planner_thinking_enabled", False)
+
+    previous = GenerationPlan(
+        selected_model_id="test/fast",
+        prompt_original="cat",
+        prompt_optimized="cat",
+        parameters={"guidance_scale": 3.0, "num_inference_steps": 4},
+        attempt_number=1,
+    )
+    audit = AuditResult(verdict=AuditVerdict.FAIL, score=3.0)
+
+    payload = {
+        "reasoning_trace": "refined",
+        "intent_category": "photorealistic",
+        "selected_model_id": "test/quality",
+        "pipeline_type": "text-to-image",
+        "prompt_optimized": "better cat",
+        "negative_prompt": "",
+        "style_preset": None,
+        "parameters": {"guidance_scale": 7.0, "num_inference_steps": 50},
+        "estimated_cost_usd": 0.05,
+    }
+    planner._client.chat.completions.create.return_value = _mock_llm_response(json.dumps(payload))
+
+    await planner.refine_plan(previous, audit)
+
+    call = planner._client.chat.completions.create.await_args
+    # When thinking is disabled, extra_body should NOT be in kwargs
+    assert "extra_body" not in call.kwargs
+
+
+async def test_create_plan_handles_unsupported_model_gracefully(
+    planner: PlannerAgent,
+) -> None:
+    """Test that if the LLM is unsupported (no thinking support), it still works without extra_body."""
+    from art_director.config import settings
+
+    # Simulate an API that doesn't support extra_body (returns error)
+    planner._client.chat.completions.create.side_effect = Exception("Invalid request: unknown field 'extra_body'")
+
+    plan = await planner.create_plan("cat")
+
+    # Should fallback to basic plan without thinking mode
+    assert "Fallback" in plan.reasoning_trace
+    assert isinstance(plan, GenerationPlan)

@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+import base64
+import io
 from typing import Any
 
 import httpx
 import numpy as np
 import structlog
+from huggingface_hub import AsyncInferenceClient
 from openai import AsyncOpenAI
+from PIL import Image as PILImage
 
 from art_director.config import settings
 from art_director.schemas import AuditResult, AuditVerdict
@@ -26,22 +30,18 @@ Respond ONLY with a JSON object in this exact schema (no markdown fences, no ext
 {"verdict": "pass" or "fail", "score": <float 1-10>, "missing_elements": [...], "text_errors": [...], "style_alignment": "<brief>", "feedback": "<brief>"}
 
 verdict rules: score >= 7 → "pass", score <= 4 → "fail", otherwise your best judgement.
-"""
+
+IMPORTANT: Your response MUST be ONLY the JSON object. Do NOT include any explanation, markdown formatting, or text outside the JSON. Start your response with { and end with }."""
 
 
 class CriticAgent:
     def __init__(self) -> None:
         self._hf_token = settings.hf_api_token
+        self._hf_client = AsyncInferenceClient(token=self._hf_token)
         self._vlm_client = AsyncOpenAI(
             api_key=settings.effective_critic_api_key or "not-set",
             base_url=settings.critic_base_url,
         )
-        self._http: httpx.AsyncClient | None = None
-
-    async def _get_http(self) -> httpx.AsyncClient:
-        if self._http is None or self._http.is_closed:
-            self._http = httpx.AsyncClient(timeout=60.0)
-        return self._http
 
     # ------------------------------------------------------------------
     # Public API
@@ -123,36 +123,44 @@ class CriticAgent:
         try:
             image_bytes = b64_to_image_bytes(image_b64)
             model = settings.clip_model
-            api_url = f"https://api-inference.huggingface.co/models/{model}"
-            headers: dict[str, str] = {}
+            url = f"https://api-inference.huggingface.co/models/{model}"
+            headers = {}
             if self._hf_token:
                 headers["Authorization"] = f"Bearer {self._hf_token}"
 
-            http = await self._get_http()
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                # Get text embedding
+                text_resp = await client.post(
+                    url,
+                    json={"inputs": prompt, "options": {"wait_for_model": True}},
+                    headers=headers,
+                )
+                if text_resp.status_code != 200:
+                    logger.warning("clip_text_embedding_failed", status=text_resp.status_code)
+                    return None
+                text_embedding = text_resp.json()
 
-            text_resp = await http.post(
-                api_url,
-                headers=headers,
-                json={"inputs": prompt},
-            )
-            text_resp.raise_for_status()
-            text_embedding = self._flatten_embedding(text_resp.json())
+                # Get image embedding
+                img_headers = {**headers, "Content-Type": "application/octet-stream"}
+                img_resp = await client.post(
+                    url,
+                    content=image_bytes,
+                    headers=img_headers,
+                )
+                if img_resp.status_code != 200:
+                    logger.warning("clip_image_embedding_failed", status=img_resp.status_code)
+                    return None
+                img_embedding = img_resp.json()
 
-            img_resp = await http.post(
-                api_url,
-                headers=headers,
-                content=image_bytes,
-                params={"wait_for_model": "true"},
-            )
-            img_resp.raise_for_status()
-            img_embedding = self._flatten_embedding(img_resp.json())
+            text_vec = self._flatten_embedding(text_embedding)
+            img_vec = self._flatten_embedding(img_embedding)
 
-            if text_embedding is None or img_embedding is None:
+            if text_vec is None or img_vec is None:
                 logger.warning("clip_embedding_extraction_failed")
                 return None
 
-            a = np.asarray(text_embedding, dtype=np.float64)
-            b = np.asarray(img_embedding, dtype=np.float64)
+            a = np.asarray(text_vec, dtype=np.float64)
+            b = np.asarray(img_vec, dtype=np.float64)
 
             norm_a = np.linalg.norm(a)
             norm_b = np.linalg.norm(b)
@@ -194,17 +202,32 @@ class CriticAgent:
         style_hint: str = "",
     ) -> AuditResult:
         raw_b64 = image_b64
-        if not raw_b64.startswith("data:"):
-            raw_b64 = f"data:image/png;base64,{raw_b64}"
+
+        # Resize image before sending to reduce payload size
+        try:
+            raw_bytes = b64_to_image_bytes(image_b64)
+            img = PILImage.open(io.BytesIO(raw_bytes))
+            max_dim = 768
+            if max(img.size) > max_dim:
+                img.thumbnail((max_dim, max_dim), PILImage.Resampling.LANCZOS)
+                buf = io.BytesIO()
+                img.save(buf, format="PNG")
+                raw_bytes = buf.getvalue()
+            resized_b64 = base64.b64encode(raw_bytes).decode("ascii")
+            raw_b64 = f"data:image/png;base64,{resized_b64}"
+        except Exception:
+            # If resize fails, use original
+            if not raw_b64.startswith("data:"):
+                raw_b64 = f"data:image/png;base64,{raw_b64}"
 
         user_text = f"Prompt: {prompt}"
         if style_hint:
             user_text += f"\nStyle: {style_hint}"
 
         try:
-            response = await self._vlm_client.chat.completions.create(
-                model=settings.critic_model,
-                messages=[
+            kwargs: dict[str, Any] = {
+                "model": settings.critic_model,
+                "messages": [
                     {"role": "system", "content": _VLM_SYSTEM_PROMPT},
                     {
                         "role": "user",
@@ -217,15 +240,73 @@ class CriticAgent:
                         ],
                     },
                 ],
-                temperature=0.2,
-                max_tokens=1024,
-                extra_body={"chat_template_kwargs": {"thinking": True}},
-            )
+                "temperature": 0.2,
+                "max_tokens": 2048,
+            }
+            if settings.critic_thinking_enabled:
+                kwargs["extra_body"] = {"chat_template_kwargs": {"thinking": True}}
 
-            raw_text = response.choices[0].message.content or ""
-            logger.debug("vlm_raw_response", length=len(raw_text))
+            response = await self._vlm_client.chat.completions.create(**kwargs)
+
+            # Read both content and reasoning_content (Kimi k2.5 may put response in reasoning_content)
+            msg = response.choices[0].message
+            raw_text = msg.content if isinstance(msg.content, str) else ""
+            reasoning_val = getattr(msg, "reasoning_content", None)
+            reasoning = reasoning_val if isinstance(reasoning_val, str) else ""
+
+            logger.debug("vlm_raw_response", length=len(raw_text), has_reasoning=bool(reasoning))
 
             parsed = repair_json(raw_text)
+            if parsed is None and reasoning:
+                parsed = repair_json(reasoning)
+            if parsed is None and reasoning:
+                import re
+
+                score_patterns = [
+                    r"(?:\*{0,2})(?:overall\s+)?(?:score|rating|quality)(?:\*{0,2})\s*[:\-]?\s*(\d+(?:\.\d+)?)\s*/?\s*(?:10)?",
+                    r"(\d+(?:\.\d+)?)\s*(?:out\s+of|/)\s*10",
+                    r"(?:rate|give|assign)\s+(?:this|it|the\s+image)?\s*(?:a\s+)?(?:score\s+of\s+)?(\d+(?:\.\d+)?)",
+                    r"(?:score|rating)\s+(?:of|is|=)\s+(\d+(?:\.\d+)?)",
+                ]
+                score_val = 5.0
+                for pattern in score_patterns:
+                    score_match = re.search(pattern, reasoning, re.IGNORECASE)
+                    if score_match:
+                        val = float(score_match.group(1))
+                        if 0 <= val <= 10:
+                            score_val = val
+                            break
+
+                fail_indicators = [
+                    "poor",
+                    "bad",
+                    "incorrect",
+                    "wrong",
+                    "missing",
+                    "fail",
+                    "inaccurate",
+                    "gibberish",
+                    "hallucin",
+                ]
+                pass_indicators = ["excellent", "good", "accurate", "correct", "matches", "pass", "well"]
+                reasoning_lower = reasoning.lower()
+                has_fail = any(w in reasoning_lower for w in fail_indicators)
+                has_pass = any(w in reasoning_lower for w in pass_indicators)
+
+                if score_val >= 7.0 or (has_pass and not has_fail):
+                    verdict_from_prose = AuditVerdict.PASS
+                elif score_val <= 4.0 or (has_fail and not has_pass):
+                    verdict_from_prose = AuditVerdict.FAIL
+                else:
+                    verdict_from_prose = AuditVerdict.INCONCLUSIVE
+
+                return AuditResult(
+                    verdict=verdict_from_prose,
+                    score=score_val,
+                    vlm_score=score_val,
+                    raw_vlm_response=reasoning[:500],
+                    feedback=reasoning[:300],
+                )
             if parsed is None:
                 return AuditResult(
                     verdict=AuditVerdict.INCONCLUSIVE,

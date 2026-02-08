@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import random
+from typing import Any
 
 import structlog
 from openai import AsyncOpenAI
@@ -136,23 +137,31 @@ You MUST respond with ONLY a JSON object (no markdown, no explanation) with thes
             user_content = user_message
 
         try:
-            response = await self._client.chat.completions.create(
-                model=settings.planner_model,
-                messages=[
+            kwargs: dict[str, Any] = {
+                "model": settings.planner_model,
+                "messages": [
                     {"role": "system", "content": self._system_prompt},
                     {"role": "user", "content": user_content},
                 ],
-                temperature=0.3,
-                max_tokens=1024,
-                extra_body={"chat_template_kwargs": {"thinking": True}},
-            )
-            raw = response.choices[0].message.content or ""
-            logger.debug("planner_raw_response", length=len(raw))
+                "temperature": 0.3,
+                "max_tokens": 2048,
+            }
+            if settings.planner_thinking_enabled:
+                kwargs["extra_body"] = {"chat_template_kwargs": {"thinking": True}}
+
+            response = await self._client.chat.completions.create(**kwargs)
+            msg = response.choices[0].message
+            raw = msg.content if isinstance(msg.content, str) else ""
+            reasoning_val = getattr(msg, "reasoning_content", None)
+            reasoning = reasoning_val if isinstance(reasoning_val, str) else ""
+            logger.debug("planner_raw_response", length=len(raw), has_reasoning=bool(reasoning))
         except Exception as exc:
             logger.error("planner_llm_error", error=str(exc))
             return self._fallback_plan(user_prompt, style_preset, width, height, reference_image_b64)
 
         parsed = repair_json(raw)
+        if parsed is None and reasoning:
+            parsed = repair_json(reasoning)
         if not parsed:
             logger.warning("planner_json_parse_failed", raw_preview=raw[:200])
             return self._fallback_plan(user_prompt, style_preset, width, height, reference_image_b64)
@@ -185,25 +194,36 @@ REFINEMENT PRIORITY (apply in this order):
 3. CHANGE THE SEED for variation (new random generation)
 4. ADJUST PARAMETERS only as a last resort (guidance_scale, steps)
 
+Keep the "reasoning_trace" field SHORT (under 100 characters). Focus on the actual plan changes, not explaining the problems.
+
 Respond with an updated JSON plan. The prompt_optimized MUST be meaningfully different."""
 
         try:
-            response = await self._client.chat.completions.create(
-                model=settings.planner_model,
-                messages=[
+            kwargs: dict[str, Any] = {
+                "model": settings.planner_model,
+                "messages": [
                     {"role": "system", "content": self._system_prompt},
                     {"role": "user", "content": refinement_prompt},
                 ],
-                temperature=0.5,
-                max_tokens=1024,
-                extra_body={"chat_template_kwargs": {"thinking": True}},
-            )
-            raw = response.choices[0].message.content or ""
+                "temperature": 0.5,
+                "max_tokens": 4096,
+            }
+            if settings.planner_thinking_enabled:
+                kwargs["extra_body"] = {"chat_template_kwargs": {"thinking": True}}
+
+            response = await self._client.chat.completions.create(**kwargs)
+            msg = response.choices[0].message
+            raw = msg.content if isinstance(msg.content, str) else ""
+            reasoning_val = getattr(msg, "reasoning_content", None)
+            reasoning = reasoning_val if isinstance(reasoning_val, str) else ""
+            logger.debug("planner_refine_raw_response", length=len(raw), has_reasoning=bool(reasoning))
         except Exception as exc:
             logger.error("planner_refine_error", error=str(exc))
             return self._apply_simple_refinement(previous_plan, audit_feedback)
 
         parsed = repair_json(raw)
+        if parsed is None and reasoning:
+            parsed = repair_json(reasoning)
         if not parsed:
             return self._apply_simple_refinement(previous_plan, audit_feedback)
 
@@ -273,7 +293,8 @@ Respond with an updated JSON plan. The prompt_optimized MUST be meaningfully dif
         height: int,
         reference_b64: str | None,
     ) -> GenerationPlan:
-        model = self._models[0] if self._models else None
+        schnell = next((m for m in self._models if "schnell" in m.model_id), None)
+        model = schnell or (self._models[0] if self._models else None)
         model_id = model.model_id if model else "black-forest-labs/FLUX.1-schnell"
 
         optimized = prompt

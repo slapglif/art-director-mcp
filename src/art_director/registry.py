@@ -351,7 +351,7 @@ class ModelRegistry:
         try:
             async with httpx.AsyncClient(timeout=10.0) as client:
                 resp = await client.get(url, headers=headers)
-                healthy = resp.status_code in (200, 503)
+                healthy = resp.status_code in (200, 302, 410, 503)
                 model = self._models.get(model_id)
                 if model:
                     model.is_available = healthy

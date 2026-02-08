@@ -42,6 +42,9 @@ coverage.xml
 .DS_Store
 Thumbs.db
 
+# Debug scripts
+debug_kimi.py
+
 # MCP state / internal
 .omc/
 context.md

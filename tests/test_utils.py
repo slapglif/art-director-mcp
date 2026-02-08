@@ -58,6 +58,30 @@ def test_repair_json_garbage() -> None:
     assert result is None
 
 
+def test_repair_json_prose_then_json() -> None:
+    raw = (
+        "The user wants to generate an image of a cat. Let me analyze the request carefully.\n\n"
+        "Based on the requirements, I'll select a photorealistic model.\n\n"
+        '{"intent_category": "photorealistic", "selected_model_id": "black-forest-labs/FLUX.1-dev", '
+        '"prompt_optimized": "a fluffy orange cat sitting on a windowsill", "score": 8.5}'
+    )
+    result = repair_json(raw)
+    assert result is not None
+    assert result["intent_category"] == "photorealistic"
+    assert result["score"] == 8.5
+
+
+def test_repair_json_prose_with_braces_then_json() -> None:
+    raw = (
+        "I need to check {text_rendering} and {photorealism} capabilities.\n\n"
+        "Here is the plan:\n"
+        '{"selected_model_id": "stabilityai/stable-diffusion-xl-base-1.0", "verdict": "pass"}'
+    )
+    result = repair_json(raw)
+    assert result is not None
+    assert result["selected_model_id"] == "stabilityai/stable-diffusion-xl-base-1.0"
+
+
 def test_estimate_generation_cost_known_model() -> None:
     cost = estimate_generation_cost("black-forest-labs/FLUX.1-dev")
     assert cost == 0.03
