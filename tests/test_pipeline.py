@@ -209,6 +209,7 @@ async def test_generate_cost_budget_exceeded(registry: ModelRegistry) -> None:
 
     assert result.attempts_used == 0
     assert result.success is False
+    executor.execute.assert_not_called()
 
 
 async def test_generate_predictive_cost_check(registry: ModelRegistry) -> None:

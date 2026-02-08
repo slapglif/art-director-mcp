@@ -25,9 +25,8 @@ if TYPE_CHECKING:
 logger = structlog.get_logger()
 
 mcp = FastMCP(
-    "Art Director",
-    version="0.1.0",
-    description="AI-powered image generation pipeline with intelligent model selection, quality auditing, and auto-correction.",
+    name="Art Director",
+    instructions="AI-powered image generation pipeline with intelligent model selection, quality auditing, and auto-correction.",
 )
 
 _orchestrator: PipelineOrchestrator | None = None
