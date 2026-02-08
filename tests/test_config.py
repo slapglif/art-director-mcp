@@ -6,14 +6,20 @@ from art_director.config import Settings
 def test_default_values(monkeypatch, tmp_path) -> None:
     monkeypatch.chdir(tmp_path)
     monkeypatch.delenv("ART_DIRECTOR_PLANNER_MODEL", raising=False)
+    monkeypatch.delenv("ART_DIRECTOR_PLANNER_BASE_URL", raising=False)
     monkeypatch.delenv("ART_DIRECTOR_MAX_RETRIES", raising=False)
     monkeypatch.delenv("ART_DIRECTOR_DEFAULT_WIDTH", raising=False)
     monkeypatch.delenv("ART_DIRECTOR_CLIP_ENABLED", raising=False)
     monkeypatch.delenv("ART_DIRECTOR_TRANSPORT", raising=False)
     monkeypatch.delenv("ART_DIRECTOR_PORT", raising=False)
+    monkeypatch.delenv("ART_DIRECTOR_CRITIC_MODEL", raising=False)
+    monkeypatch.delenv("ART_DIRECTOR_CRITIC_BASE_URL", raising=False)
 
     s = Settings()
-    assert s.planner_model == "gpt-4o"
+    assert s.planner_model == "moonshotai/kimi-k2.5"
+    assert s.planner_base_url == "https://integrate.api.nvidia.com/v1"
+    assert s.critic_model == "moonshotai/kimi-k2.5"
+    assert s.critic_base_url == "https://integrate.api.nvidia.com/v1"
     assert s.max_retries == 3
     assert s.default_width == 1024
     assert s.clip_enabled is True
@@ -57,3 +63,33 @@ def test_env_override(monkeypatch, tmp_path) -> None:
     monkeypatch.setenv("ART_DIRECTOR_MAX_RETRIES", "5")
     s = Settings()
     assert s.max_retries == 5
+
+
+def test_effective_planner_api_key_prefers_planner_key() -> None:
+    s = Settings(planner_api_key="pk-123", nim_api_key="nvapi-456")
+    assert s.effective_planner_api_key == "pk-123"
+
+
+def test_effective_planner_api_key_falls_back_to_nim() -> None:
+    s = Settings(planner_api_key="", nim_api_key="nvapi-456")
+    assert s.effective_planner_api_key == "nvapi-456"
+
+
+def test_effective_planner_api_key_empty_when_both_empty() -> None:
+    s = Settings(planner_api_key="", nim_api_key="")
+    assert s.effective_planner_api_key == ""
+
+
+def test_effective_critic_api_key_prefers_critic_key() -> None:
+    s = Settings(critic_api_key="ck-123", nim_api_key="nvapi-456")
+    assert s.effective_critic_api_key == "ck-123"
+
+
+def test_effective_critic_api_key_falls_back_to_nim() -> None:
+    s = Settings(critic_api_key="", nim_api_key="nvapi-456")
+    assert s.effective_critic_api_key == "nvapi-456"
+
+
+def test_effective_critic_api_key_empty_when_both_empty() -> None:
+    s = Settings(critic_api_key="", nim_api_key="")
+    assert s.effective_critic_api_key == ""

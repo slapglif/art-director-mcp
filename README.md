@@ -4,7 +4,7 @@ An MCP server that orchestrates a high-fidelity image generation pipeline with A
 
 ## Overview
 
-Art Director is an intelligent image generation orchestrator that combines multiple AI agents to produce high-quality images with minimal manual intervention. An LLM planner selects the optimal generation model and optimizes prompts, a Hugging Face executor runs the generation with intelligent fallback chains, and a hybrid CLIP+VLM critic audits results and feeds corrections back to the planner. The system automatically retries with prompt rewrites, model switches, or seed variations until quality targets are met or budgets are exhausted.
+Art Director is an intelligent image generation orchestrator that combines multiple AI agents to produce high-quality images with minimal manual intervention. A Kimi k2.5 planner (via NVIDIA NIM) selects the optimal generation model and optimizes prompts, a Hugging Face executor runs the generation with intelligent fallback chains, and a hybrid CLIP+VLM critic audits results and feeds corrections back to the planner. The system automatically retries with prompt rewrites, model switches, or seed variations until quality targets are met or budgets are exhausted.
 
 ## Architecture
 
@@ -14,7 +14,7 @@ User Prompt
     v
 +-------------------+
 | Planner (LLM)     |  Classifies intent, selects model,
-| (GPT-4o, Claude)  |  optimizes prompt, configures params
+| (Kimi k2.5 / NIM) |  optimizes prompt, configures params
 +-------------------+
     |
     v
@@ -26,7 +26,7 @@ User Prompt
     v
 +-------------------+
 | Critic (CLIP+VLM) |  Fast-path CLIP scoring (0.1s)
-| (Qwen2-VL, LLaVA) |  Deep audit with VLM (2-8s)
+| (Kimi k2.5 / NIM) |  Deep audit with VLM (2-8s)
 +-------------------+
     |
     v
@@ -60,7 +60,7 @@ User Prompt
 ### Installation
 
 ```bash
-git clone https://github.com/your-org/art-director-mcp.git
+git clone https://github.com/slapglif/art-director-mcp.git
 cd art-director-mcp
 pip install -e ".[dev]"
 ```
@@ -70,9 +70,9 @@ pip install -e ".[dev]"
 ```bash
 cp .env.example .env
 # Edit .env and fill in your API keys:
-# - PLANNER_API_KEY (OpenAI, Anthropic, NIM, etc.)
+# - PLANNER_API_KEY (NVIDIA NIM key for Kimi k2.5, or any OpenAI-compatible key)
 # - HF_API_TOKEN (Hugging Face)
-# - CRITIC_API_KEY (OpenAI, HF, NIM, etc.)
+# - CRITIC_API_KEY (NVIDIA NIM key for Kimi k2.5)
 ```
 
 ### Run
@@ -87,12 +87,13 @@ python -m art_director
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `ART_DIRECTOR_PLANNER_API_KEY` | (required) | API key for planner LLM (OpenAI-compatible) |
-| `ART_DIRECTOR_PLANNER_BASE_URL` | `https://api.openai.com/v1` | Planner endpoint (OpenAI, Azure, NIM, etc.) |
-| `ART_DIRECTOR_PLANNER_MODEL` | `gpt-4o` | Planner model ID |
+| `ART_DIRECTOR_PLANNER_BASE_URL` | `https://integrate.api.nvidia.com/v1` | Planner endpoint (NVIDIA NIM default, OpenAI-compatible) |
+| `ART_DIRECTOR_PLANNER_MODEL` | `moonshotai/kimi-k2.5` | Planner model (Kimi k2.5 on NVIDIA NIM) |
 | `ART_DIRECTOR_HF_API_TOKEN` | (required) | Hugging Face API token |
-| `ART_DIRECTOR_CRITIC_API_KEY` | (required) | API key for critic VLM (OpenAI-compatible) |
-| `ART_DIRECTOR_CRITIC_BASE_URL` | `https://api.openai.com/v1` | Critic endpoint |
-| `ART_DIRECTOR_CRITIC_MODEL` | `gpt-4o-mini` | Critic model ID |
+| `ART_DIRECTOR_CRITIC_API_KEY` | (required) | API key for critic VLM (NVIDIA NIM for Kimi k2.5) |
+| `ART_DIRECTOR_CRITIC_BASE_URL` | `https://integrate.api.nvidia.com/v1` | Critic endpoint (NVIDIA NIM) |
+| `ART_DIRECTOR_CRITIC_MODEL` | `moonshotai/kimi-k2.5` | Critic model (Kimi k2.5 on NVIDIA NIM) |
+| `ART_DIRECTOR_NIM_API_KEY` | (optional) | Shared NVIDIA NIM API key (fallback for planner + critic if their keys are unset) |
 | `ART_DIRECTOR_CLIP_ENABLED` | `true` | Enable CLIP fast-path scoring |
 | `ART_DIRECTOR_CLIP_THRESHOLD_PASS` | `0.82` | CLIP score for auto-pass |
 | `ART_DIRECTOR_CLIP_THRESHOLD_FAIL` | `0.55` | CLIP score for auto-fail |

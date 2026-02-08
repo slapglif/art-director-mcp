@@ -24,6 +24,7 @@ def mock_settings(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(settings, "planner_api_key", "test-key")
     monkeypatch.setattr(settings, "planner_base_url", "http://test")
     monkeypatch.setattr(settings, "planner_model", "test-model")
+    monkeypatch.setattr(settings, "nim_api_key", "test-nim-key")
 
     monkeypatch.setattr(settings, "critic_api_key", "test-key")
     monkeypatch.setattr(settings, "critic_base_url", "http://test")

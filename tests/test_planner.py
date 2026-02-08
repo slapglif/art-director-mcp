@@ -250,3 +250,105 @@ def test_fallback_plan_without_preset(planner: PlannerAgent, monkeypatch: pytest
 
     assert plan.parameters["guidance_scale"] == 3.0
     assert plan.parameters["num_inference_steps"] == 4
+
+
+async def test_create_plan_passes_reasoning_extra_body(planner: PlannerAgent) -> None:
+    payload = {
+        "reasoning_trace": "ok",
+        "intent_category": "photorealistic",
+        "selected_model_id": "test/quality",
+        "pipeline_type": "text-to-image",
+        "prompt_optimized": "enhanced cat",
+        "negative_prompt": "",
+        "style_preset": None,
+        "parameters": {"guidance_scale": 7.0, "num_inference_steps": 50},
+        "estimated_cost_usd": 0.05,
+    }
+    planner._client.chat.completions.create.return_value = _mock_llm_response(json.dumps(payload))
+
+    await planner.create_plan("cat")
+
+    call = planner._client.chat.completions.create.await_args
+    assert call.kwargs["extra_body"] == {"chat_template_kwargs": {"thinking": True}}
+
+
+async def test_refine_plan_passes_reasoning_extra_body(planner: PlannerAgent, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("art_director.planner.random.randint", lambda _a, _b: 12345)
+    previous = GenerationPlan(
+        selected_model_id="test/fast",
+        prompt_original="cat",
+        prompt_optimized="cat",
+        parameters={"guidance_scale": 3.0, "num_inference_steps": 4},
+        attempt_number=1,
+    )
+    audit = AuditResult(verdict=AuditVerdict.FAIL, score=3.0)
+
+    payload = {
+        "reasoning_trace": "refined",
+        "intent_category": "photorealistic",
+        "selected_model_id": "test/quality",
+        "pipeline_type": "text-to-image",
+        "prompt_optimized": "better cat",
+        "negative_prompt": "",
+        "style_preset": None,
+        "parameters": {"guidance_scale": 7.0, "num_inference_steps": 50},
+        "estimated_cost_usd": 0.05,
+    }
+    planner._client.chat.completions.create.return_value = _mock_llm_response(json.dumps(payload))
+
+    await planner.refine_plan(previous, audit)
+
+    call = planner._client.chat.completions.create.await_args
+    assert call.kwargs["extra_body"] == {"chat_template_kwargs": {"thinking": True}}
+
+
+async def test_create_plan_multimodal_with_reference_image(planner: PlannerAgent) -> None:
+    payload = {
+        "reasoning_trace": "ok",
+        "intent_category": "artistic",
+        "selected_model_id": "test/quality",
+        "pipeline_type": "image-to-image",
+        "prompt_optimized": "enhanced from reference",
+        "negative_prompt": "",
+        "style_preset": None,
+        "parameters": {"guidance_scale": 7.0, "num_inference_steps": 50},
+        "estimated_cost_usd": 0.05,
+    }
+    planner._client.chat.completions.create.return_value = _mock_llm_response(json.dumps(payload))
+
+    ref_b64 = "data:image/png;base64,iVBORw0KGgo="
+    await planner.create_plan("modify this image", reference_image_b64=ref_b64)
+
+    call = planner._client.chat.completions.create.await_args
+    messages = call.kwargs["messages"]
+    user_content = messages[1]["content"]
+    assert isinstance(user_content, list)
+    assert user_content[0]["type"] == "text"
+    assert user_content[1]["type"] == "image_url"
+    assert user_content[1]["image_url"]["url"] == ref_b64
+
+
+async def test_create_plan_text_only_without_reference(planner: PlannerAgent) -> None:
+    payload = {
+        "reasoning_trace": "ok",
+        "intent_category": "photorealistic",
+        "selected_model_id": "test/quality",
+        "pipeline_type": "text-to-image",
+        "prompt_optimized": "enhanced cat",
+        "negative_prompt": "",
+        "style_preset": None,
+        "parameters": {"guidance_scale": 7.0, "num_inference_steps": 50},
+        "estimated_cost_usd": 0.05,
+    }
+    planner._client.chat.completions.create.return_value = _mock_llm_response(json.dumps(payload))
+
+    await planner.create_plan("cat")
+
+    call = planner._client.chat.completions.create.await_args
+    messages = call.kwargs["messages"]
+    user_content = messages[1]["content"]
+    assert isinstance(user_content, str)
+
+
+def test_system_prompt_mentions_kimi(planner: PlannerAgent) -> None:
+    assert "Kimi k2.5" in planner._system_prompt

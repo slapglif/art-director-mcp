@@ -217,7 +217,7 @@ async def batch_generate(
 
 
 @mcp.tool()
-async def estimate_cost(prompt: str) -> dict[str, float]:
+async def estimate_cost(prompt: str) -> dict[str, Any]:
     """Estimate the cost of generating an image before running the pipeline.
 
     Args:

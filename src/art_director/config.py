@@ -12,14 +12,14 @@ class Settings(BaseSettings):
     model_config = {"env_prefix": "ART_DIRECTOR_", "env_file": ".env", "env_file_encoding": "utf-8"}
 
     planner_api_key: str = ""
-    planner_base_url: str = "https://api.openai.com/v1"
-    planner_model: str = "gpt-4o"
+    planner_base_url: str = "https://integrate.api.nvidia.com/v1"
+    planner_model: str = "moonshotai/kimi-k2.5"
 
     hf_api_token: str = ""
 
     critic_api_key: str = ""
-    critic_base_url: str = "https://api.openai.com/v1"
-    critic_model: str = "gpt-4o-mini"
+    critic_base_url: str = "https://integrate.api.nvidia.com/v1"
+    critic_model: str = "moonshotai/kimi-k2.5"
 
     nim_api_key: str = ""
     nim_base_url: str = "https://integrate.api.nvidia.com/v1"
@@ -53,6 +53,14 @@ class Settings(BaseSettings):
             except json.JSONDecodeError:
                 return {}
         return v if isinstance(v, dict) else {}
+
+    @property
+    def effective_planner_api_key(self) -> str:
+        return self.planner_api_key or self.nim_api_key
+
+    @property
+    def effective_critic_api_key(self) -> str:
+        return self.critic_api_key or self.nim_api_key
 
     @property
     def output_path(self) -> Path:

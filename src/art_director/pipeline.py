@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import random
 import time
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import structlog
 
@@ -308,7 +308,7 @@ class PipelineOrchestrator:
             message=message or job.progress_message,
         )
 
-    async def estimate_cost(self, prompt: str) -> dict[str, float]:
+    async def estimate_cost(self, prompt: str) -> dict[str, Any]:
         from art_director.utils import estimate_generation_cost, estimate_pipeline_cost
 
         plan = await self._planner.create_plan(user_prompt=prompt)

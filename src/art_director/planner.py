@@ -29,7 +29,7 @@ class PlannerAgent:
         self._models = available_models
         self._presets = {p.name: p for p in style_presets}
         self._client = AsyncOpenAI(
-            api_key=settings.planner_api_key or "not-set",
+            api_key=settings.effective_planner_api_key or "not-set",
             base_url=settings.planner_base_url,
         )
         self._system_prompt = self._build_system_prompt()
@@ -62,7 +62,7 @@ class PlannerAgent:
         preset_names = ", ".join(self._presets.keys())
         intent_values = ", ".join(f'"{c.value}"' for c in IntentCategory)
 
-        return f"""You are the Art Director — an expert AI image generation planner.
+        return f"""You are the Art Director (powered by Kimi k2.5) — an expert AI image generation planner with multimodal understanding capabilities.
 Your job is to analyze a user's image request, classify the intent, select the optimal generation model,
 optimize the prompt for that model, and configure the generation parameters.
 
@@ -127,15 +127,24 @@ You MUST respond with ONLY a JSON object (no markdown, no explanation) with thes
         if reference_image_b64:
             user_message += "\nA reference image has been provided for style/composition guidance."
 
+        if reference_image_b64:
+            user_content = [
+                {"type": "text", "text": user_message},
+                {"type": "image_url", "image_url": {"url": reference_image_b64}},
+            ]
+        else:
+            user_content = user_message
+
         try:
             response = await self._client.chat.completions.create(
                 model=settings.planner_model,
                 messages=[
                     {"role": "system", "content": self._system_prompt},
-                    {"role": "user", "content": user_message},
+                    {"role": "user", "content": user_content},
                 ],
                 temperature=0.3,
                 max_tokens=1024,
+                extra_body={"chat_template_kwargs": {"thinking": True}},
             )
             raw = response.choices[0].message.content or ""
             logger.debug("planner_raw_response", length=len(raw))
@@ -187,6 +196,7 @@ Respond with an updated JSON plan. The prompt_optimized MUST be meaningfully dif
                 ],
                 temperature=0.5,
                 max_tokens=1024,
+                extra_body={"chat_template_kwargs": {"thinking": True}},
             )
             raw = response.choices[0].message.content or ""
         except Exception as exc:

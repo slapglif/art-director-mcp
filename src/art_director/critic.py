@@ -33,7 +33,7 @@ class CriticAgent:
     def __init__(self) -> None:
         self._hf_token = settings.hf_api_token
         self._vlm_client = AsyncOpenAI(
-            api_key=settings.critic_api_key,
+            api_key=settings.effective_critic_api_key or "not-set",
             base_url=settings.critic_base_url,
         )
         self._http: httpx.AsyncClient | None = None
@@ -219,6 +219,7 @@ class CriticAgent:
                 ],
                 temperature=0.2,
                 max_tokens=1024,
+                extra_body={"chat_template_kwargs": {"thinking": True}},
             )
 
             raw_text = response.choices[0].message.content or ""

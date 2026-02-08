@@ -8,7 +8,7 @@ def main() -> None:
 
     configure_logging(settings.log_level)
     app = create_app()
-    app.run(transport=settings.transport)
+    app.run(transport=settings.transport)  # type: ignore[arg-type]
 
 
 if __name__ == "__main__":
