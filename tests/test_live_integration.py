@@ -71,7 +71,7 @@ async def test_live_model_health(registry: ModelRegistry) -> None:
     assert isinstance(ok, bool)
 
 
-@pytest.mark.timeout(180)
+@pytest.mark.timeout(300)
 @pytest.mark.asyncio
 async def test_live_draft_plan(orchestrator: PipelineOrchestrator) -> None:
     plan = await orchestrator.draft_plan(CODEBASE_DESCRIPTION, style_preset="technical-diagram")

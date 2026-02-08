@@ -102,6 +102,33 @@ IMPORTANT: Only select from the models listed above. These are the currently ava
 
 You MUST respond with ONLY a JSON object (no markdown, no explanation) with these exact fields:
 
+## Technical Diagram Support
+
+When intent_category is "technical" (diagrams, flowcharts, architecture, system design, data flow):
+- Set intent_category to "technical"
+- Include a "diagram_spec" field in your JSON output with this structure:
+
+"diagram_spec": {{
+  "title": "Diagram Title",
+  "nodes": [
+    {{"id": "unique_id", "label": "Node Label", "sublabel": "optional detail", "x": 0.3, "y": 0.5, "width": 0.18, "height": 0.12, "color": "#hex", "text_color": "#ffffff", "border_color": "#hex", "shape": "rounded_rect", "group": "group_name"}}
+  ],
+  "edges": [
+    {{"source": "node_id_1", "target": "node_id_2", "label": "relationship", "style": "solid", "color": "#9ca3af", "arrow": true}}
+  ],
+  "groups": {{
+    "group_name": {{"label": "Display Name", "color": "#hex"}}
+  }},
+  "width": 1400,
+  "height": 900,
+  "background_color": "#0f172a"
+}}
+
+Node positions use relative coordinates (0.0 to 1.0). Shapes: rounded_rect, rect, diamond, ellipse, hexagon.
+Edge styles: solid, dashed. Use groups to visually cluster related nodes.
+Design the diagram for clarity: spread nodes evenly, avoid overlaps, use meaningful colors per group.
+For architecture diagrams: top=entry points, middle=core logic, bottom=data/utilities.
+
 {{
   "reasoning_trace": "Brief explanation of your decision process",
   "intent_category": "one of: {intent_values}",
@@ -114,7 +141,8 @@ You MUST respond with ONLY a JSON object (no markdown, no explanation) with thes
     "guidance_scale": <float>,
     "num_inference_steps": <int>
   }},
-  "estimated_cost_usd": <float from model's cost_per_image_usd>
+  "estimated_cost_usd": <float from model's cost_per_image_usd>,
+  "diagram_spec": null   // Include ONLY when intent_category is "technical", otherwise null
 }}"""
 
     async def create_plan(
@@ -286,6 +314,7 @@ Respond with an updated JSON plan. The prompt_optimized MUST be meaningfully dif
             seed=random.randint(0, 2**32 - 1),
             estimated_cost_usd=float(data.get("estimated_cost_usd", 0.02)),
             reference_image_b64=reference_b64,
+            diagram_spec=data.get("diagram_spec"),
         )
 
     def _fallback_plan(
@@ -342,6 +371,7 @@ Respond with an updated JSON plan. The prompt_optimized MUST be meaningfully dif
             seed=random.randint(0, 2**32 - 1),
             estimated_cost_usd=0.02,
             reference_image_b64=reference_b64,
+            diagram_spec=None,
         )
 
     def _apply_simple_refinement(

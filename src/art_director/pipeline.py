@@ -126,6 +126,49 @@ class PipelineOrchestrator:
         )
         log.info("plan_created", model=plan.selected_model_id, intent=plan.intent_category)
 
+        from art_director.schemas import IntentCategory
+
+        # Route TECHNICAL intent with diagram_spec through Pillow renderer
+        if plan.intent_category == IntentCategory.TECHNICAL and plan.diagram_spec:
+            from art_director.diagram_renderer import DiagramRenderer, DiagramSpec
+            from art_director.schemas import ModelTier
+            from art_director.utils import image_bytes_to_b64, save_image
+
+            try:
+                renderer = DiagramRenderer()
+                spec = DiagramSpec(**plan.diagram_spec)
+                image_bytes = renderer.render(spec)
+                image_b64 = image_bytes_to_b64(image_bytes)
+                image_path = save_image(image_bytes, settings.output_path, prefix=plan.plan_id)
+                attempt = GenerationAttempt(
+                    attempt_number=1,
+                    plan=plan,
+                    image_path=str(image_path),
+                    image_b64=image_b64,
+                    duration_seconds=0.0,
+                    cost_usd=0.0,
+                    seed_used=0,
+                    model_tier_used=ModelTier.SERVERLESS,
+                )
+                job.attempts.append(attempt)
+
+                # Still audit the rendered diagram for quality
+                job.update(JobState.AUDITING, "Auditing rendered diagram...")
+                audit = await self._critic.audit(
+                    image_b64=image_b64,
+                    prompt=plan.prompt_optimized or prompt,
+                    style_hint="technical-diagram",
+                )
+                attempt.audit = audit
+                log.info("diagram_audit", verdict=audit.verdict, score=audit.score)
+
+                msg = f"Diagram rendered via Pillow (score={audit.score:.1f})"
+                job.update(JobState.COMPLETED, msg)
+                return self._build_result(job, success=True, attempt=attempt, message=msg)
+            except Exception as exc:
+                log.warning("diagram_renderer_failed", error=str(exc))
+                # Fall through to normal diffusion pipeline
+
         best_attempt: GenerationAttempt | None = None
         best_score: float = -1.0
 

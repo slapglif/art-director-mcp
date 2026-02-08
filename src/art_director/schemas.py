@@ -120,6 +120,7 @@ class GenerationPlan(BaseModel):
     estimated_cost_usd: float = 0.0
     reference_image_b64: str | None = None
     attempt_number: int = 1
+    diagram_spec: dict[str, Any] | None = None
 
 
 # ---------------------------------------------------------------------------
