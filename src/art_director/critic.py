@@ -41,6 +41,7 @@ class CriticAgent:
         self._vlm_client = AsyncOpenAI(
             api_key=settings.effective_critic_api_key or "not-set",
             base_url=settings.critic_base_url,
+            timeout=120.0,
         )
 
     # ------------------------------------------------------------------

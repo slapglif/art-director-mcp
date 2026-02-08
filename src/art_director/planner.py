@@ -32,6 +32,7 @@ class PlannerAgent:
         self._client = AsyncOpenAI(
             api_key=settings.effective_planner_api_key or "not-set",
             base_url=settings.planner_base_url,
+            timeout=120.0,
         )
         self._system_prompt = self._build_system_prompt()
 
